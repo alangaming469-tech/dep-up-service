@@ -1,0 +1,10 @@
+{
+  "name": "dep-up-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Automated dependency upgrade service via GitHub App + Actions",
+  "scripts": {
+    "lint": "echo 'Noop lint'",
+    "test": "node tests/smoke.test.js"
+  }
+}
