@@ -1,0 +1,11 @@
+name: Dependency Upgrade
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Begin
+        run: echo "todo"
