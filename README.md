@@ -1,4 +1,6 @@
 # dep-up-service
+[![GitMCP](https://img.shields.io/endpoint?url=https://gitmcp.io/badge/alangaming469-tech/dep-up-service)](https://gitmcp.io/alangaming469-tech/dep-up-service)
+
 
 Automated dependency upgrade service:
 - Scan GitHub repos for outdated packages
