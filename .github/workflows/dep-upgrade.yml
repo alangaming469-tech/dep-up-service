@@ -1,11 +1,101 @@
 name: Dependency Upgrade
+
 on:
   schedule:
     - cron: "30 3 * * *"
   workflow_dispatch:
+    inputs:
+      repo:
+        description: "owner/repo to scan"
+        required: false
+        default: ""
+
 jobs:
   upgrade:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - repo: "alangaming469-tech/ai-content-organizer"
+            manager: "pip"
+            files: ["pyproject.toml", "requirements.txt"]
+          - repo: "alangaming469-tech/dep-up-service"
+            manager: "npm"
+            files: ["package.json"]
+          - repo: "alangaming469-tech/kain-kasa-homepage"
+            manager: "none"
+            files: []
+
     steps:
-      - name: Begin
-        run: echo "todo"
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ matrix.target.repo }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: target-repo
+
+      - name: Detect dependency manager
+        id: detect
+        run: |
+          cd target-repo
+          if [ "${{ matrix.target.manager }}" = "pip" ]; then
+            if [ -f pyproject.toml ]; then
+              echo "manager=pip" >> $GITHUB_OUTPUT
+              echo "manifest=pyproject.toml" >> $GITHUB_OUTPUT
+            elif [ -f requirements.txt ]; then
+              echo "manager=pip" >> $GITHUB_OUTPUT
+              echo "manifest=requirements.txt" >> $GITHUB_OUTPUT
+            else
+              echo "manager=none" >> $GITHUB_OUTPUT
+            fi
+          elif [ "${{ matrix.target.manager }}" = "npm" ]; then
+            if [ -f package.json ]; then
+              echo "manager=npm" >> $GITHUB_OUTPUT
+              echo "manifest=package.json" >> $GITHUB_OUTPUT
+            else
+              echo "manager=none" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "manager=none" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for outdated dependencies (pip)
+        if: steps.detect.outputs.manager == 'pip'
+        run: |
+          cd target-repo
+          pip install pip-outdated 2>/dev/null || pip install pip-upgrader
+          echo "## Outdated Python packages" > outdated.md
+          pip list --outdated --format=json | jq -r '.[] | "\(.name) \(.version) -> \(.latest_version)"' >> outdated.md || true
+          cat outdated.md
+
+      - name: Check for outdated dependencies (npm)
+        if: steps.detect.outputs.manager == 'npm'
+        run: |
+          cd target-repo
+          npm outdated --json > outdated.json 2>/dev/null || true
+          echo "## Outdated npm packages" > outdated.md
+          cat outdated.json | jq -r '.[] | "\(.name) \(.current) -> \(.latest)"' >> outdated.md 2>/dev/null || echo "None" >> outdated.md
+          cat outdated.md
+
+      - name: Create upgrade PR
+        if: steps.detect.outputs.manager != 'none'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: target-repo
+          branch: dep-upgrade/${{ matrix.target.repo }}-${{ github.run_id }}
+          commit-message: "chore(deps): upgrade dependencies for ${{ matrix.target.repo }}"
+          title: "chore(deps): upgrade dependencies for ${{ matrix.target.repo }}"
+          body: |
+            Automated dependency upgrade scan for **${{ matrix.target.repo }}**.
+
+            ### Outdated packages found:
+            ${{ steps.npm-outdated.outputs.outdated || steps.pip-outdated.outputs.outdated || 'See workflow logs for details' }}
+
+            This PR updates dependencies to their latest compatible versions.
+            Please review changes and ensure tests pass before merging.
+          labels: |
+            dependencies
+            automated
+            autoupgrade
+          reviewers: alangaming469-tech
