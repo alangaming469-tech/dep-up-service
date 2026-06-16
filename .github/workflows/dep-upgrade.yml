@@ -14,6 +14,7 @@ jobs:
   upgrade:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         target:
           - repo: "alangaming469-tech/ai-content-organizer"
@@ -61,24 +62,46 @@ jobs:
 
       - name: Check for outdated dependencies (pip)
         if: steps.detect.outputs.manager == 'pip'
+        id: pip-outdated
         run: |
           cd target-repo
           pip install pip-outdated 2>/dev/null || pip install pip-upgrader
           echo "## Outdated Python packages" > outdated.md
-          pip list --outdated --format=json | jq -r '.[] | "\(.name) \(.version) -> \(.latest_version)"' >> outdated.md || true
+          OUTDATED=$(pip list --outdated --format=json | jq -r '.[] | "\(.name) \(.version) -> \(.latest_version)"' 2>/dev/null || echo "")
+          if [ -n "$OUTDATED" ]; then
+            echo "$OUTDATED" >> outdated.md
+            echo "has_outdated=true" >> $GITHUB_OUTPUT
+            echo "outdated<<EOF" >> $GITHUB_OUTPUT
+            echo "$OUTDATED" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "No outdated packages found" >> outdated.md
+            echo "has_outdated=false" >> $GITHUB_OUTPUT
+          fi
           cat outdated.md
 
       - name: Check for outdated dependencies (npm)
         if: steps.detect.outputs.manager == 'npm'
+        id: npm-outdated
         run: |
           cd target-repo
           npm outdated --json > outdated.json 2>/dev/null || true
           echo "## Outdated npm packages" > outdated.md
-          cat outdated.json | jq -r '.[] | "\(.name) \(.current) -> \(.latest)"' >> outdated.md 2>/dev/null || echo "None" >> outdated.md
+          OUTDATED=$(cat outdated.json | jq -r '.[] | "\(.name) \(.current) -> \(.latest)"' 2>/dev/null || echo "")
+          if [ -n "$OUTDATED" ]; then
+            echo "$OUTDATED" >> outdated.md
+            echo "has_outdated=true" >> $GITHUB_OUTPUT
+            echo "outdated<<EOF" >> $GITHUB_OUTPUT
+            echo "$OUTDATED" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "No outdated packages found" >> outdated.md
+            echo "has_outdated=false" >> $GITHUB_OUTPUT
+          fi
           cat outdated.md
 
       - name: Create upgrade PR
-        if: steps.detect.outputs.manager != 'none'
+        if: (steps.detect.outputs.manager == 'pip' && steps.pip-outdated.outputs.has_outdated == 'true') || (steps.detect.outputs.manager == 'npm' && steps.npm-outdated.outputs.has_outdated == 'true')
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -90,7 +113,7 @@ jobs:
             Automated dependency upgrade scan for **${{ matrix.target.repo }}**.
 
             ### Outdated packages found:
-            ${{ steps.npm-outdated.outputs.outdated || steps.pip-outdated.outputs.outdated || 'See workflow logs for details' }}
+            ${{ steps.pip-outdated.outputs.outdated || steps.npm-outdated.outputs.outdated }}
 
             This PR updates dependencies to their latest compatible versions.
             Please review changes and ensure tests pass before merging.
